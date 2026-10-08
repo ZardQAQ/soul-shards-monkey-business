@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵魂碎片 - 灵魂碎片</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <!-- 3D 画布由 Three.js 自动创建并附加 -->
+    <div id="game-container"></div>
+
+    <!-- 准星 -->
+    <div id="crosshair">+</div>
+
+    <!-- 点击屏幕继续提示（PLAYING 状态但鼠标未锁定时显示） -->
+    <div id="click-to-play" class="hidden">
+        <div class="ctp-content">
+            <div class="ctp-icon">⌖</div>
+            <div class="ctp-text">点击屏幕继续</div>
+            <div class="ctp-hint">鼠标将被锁定，按 ESC 可暂停</div>
+        </div>
+    </div>
+
+    <!-- HUD：游戏中的信息显示 -->
+    <div id="hud">
+        <div id="info-panel">
+            <div id="objective">目标：收集所有灵魂碎片</div>
+            <div id="lives-counter" aria-label="剩余生命">
+                <span class="lives-label">生命</span>
+                <span id="lives-icons">♥♥♥</span>
+            </div>
+            <div id="tablet-hint">按 <kbd>空格</kbd> 打开地图 · <kbd>Z</kbd> 缩小</div>
+        </div>
+        <div id="status-bar" class="hidden">
+            <div id="stamina-label">体力</div>
+            <div id="stamina-bar"><div id="stamina-fill"></div></div>
+        </div>
+        <div id="gem-legend">
+            <span class="gem-tag stun">◆ 青宝石=眩晕</span>
+            <span class="gem-tag reveal">◆ 橙宝石=显怪30秒</span>
+        </div>
+        <div id="run-timer" aria-label="用时">
+            <span class="timer-label">用时</span>
+            <span id="run-timer-value">0:00</span>
+        </div>
+        <div id="alert-indicator">！被发现了！</div>
+        <div id="skill-bar">
+            <div class="skill-keycap">
+                <span class="skill-key">V</span>
+                <div class="skill-cooldown-fill" id="skill-cooldown-fill"></div>
+                <div class="skill-active-glow" id="skill-active-glow"></div>
+            </div>
+            <div class="skill-meta">
+                <div class="skill-name" id="skill-name">疾跑</div>
+                <div class="skill-status" id="skill-status">就绪 · +25%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 临时消息提示（如"出口已开启"） -->
+    <div id="message"></div>
+
+    <!-- 隐藏指令控制台（游戏中按 Enter） -->
+    <div id="cmd-console" class="hidden" aria-hidden="true">
+        <label class="cmd-label" for="cmd-input">指令</label>
+        <span class="cmd-prompt">&gt;</span>
+        <input id="cmd-input" type="text" autocomplete="off" spellcheck="false" maxlength="32" />
+    </div>
+
+    <!-- 平板地图（按空格掏出） -->
+    <div id="tablet" class="hidden" aria-hidden="true">
+        <div class="tablet-bezel">
+            <div class="tablet-header">
+                <span class="tablet-screw"></span>
+                <span id="tablet-shard-remaining">0</span>
+                <span class="tablet-screw"></span>
+            </div>
+            <div class="tablet-screen">
+                <canvas id="minimap" width="320" height="320"></canvas>
+            </div>
+            <div class="tablet-footer">COLLECT ALL SHARDS</div>
+        </div>
+    </div>
+
+    <!-- 开始菜单 -->
+    <div id="menu" class="overlay">
+        <div class="menu-wrap">
+            <div class="menu-content menu-start">
+                <button type="button" id="home-menu-btn" class="home-settings-btn" title="菜单" aria-label="打开菜单">⚙</button>
+                <div class="title-block">
+                    <div class="title-tag">ZONE 1</div>
+                    <h1 class="title">灵魂碎片</h1>
+                    <p class="subtitle">MONKEY BUSINESS</p>
+                    <div class="title-divider"><span></span><span></span><span></span></div>
+                </div>
+
+                <div class="mode-switch" role="tablist" aria-label="游戏版本">
+                    <button type="button" id="mode-classic" class="mode-btn active" role="tab" aria-selected="true">经典版</button>
+                    <button type="button" id="mode-cute" class="mode-btn" role="tab" aria-selected="false">窝囊版</button>
+                </div>
+
+                <div class="login-panel">
+                    <div class="login-modes" role="tablist" aria-label="登录方式">
+                        <button type="button" id="login-mode-nl" class="login-mode-btn active" role="tab" aria-selected="true">NodeLoc 登录</button>
+                        <button type="button" id="login-mode-guest" class="login-mode-btn" role="tab" aria-selected="false">游客登录</button>
+                    </div>
+                    <input id="name-input" maxlength="12" placeholder="NodeLoc 站点昵称（登录后自动填入）" autocomplete="off" spellcheck="false" readonly>
+                    <div id="guest-login-panel" class="hidden"></div>
+                    <div id="nl-login-panel" class="nl-login-panel">
+                        <div class="oauth-bar">
+                            <button type="button" id="btn-nodeloc" class="btn btn-oauth">NodeLoc 登录</button>
+                            <div id="oauth-session" class="oauth-session hidden">
+                                <span id="oauth-status" class="oauth-status"></span>
+                                <button type="button" id="btn-oauth-logout" class="oauth-logout">退出</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p id="login-hint" class="login-hint">请先 NodeLoc 登录；上榜名称强制使用站点昵称。</p>
+                    <p id="menu-err" class="menu-err" aria-live="polite"></p>
+                </div>
+
+                <button id="start-btn" class="btn btn-primary">
+                    <span class="btn-text">开始游戏</span>
+                    <span class="btn-hint hidden"></span>
+                </button>
+
+                <div class="warning-box warning-horror" data-mode-only="classic">
+                    <div class="warning-header">
+                        <span class="warning-icon">☠</span>
+                        <span class="warning-title">CONTENT WARNING · 恐怖内容提示</span>
+                    </div>
+                    <p class="warning-text">
+                        含黑暗走廊、惊吓与追逐，敏感者请谨慎游玩。
+                    </p>
+                </div>
+
+                <div class="warning-box warning-cute hidden" data-mode-only="cute">
+                    <div class="warning-header">
+                        <span class="warning-icon">🐱</span>
+                        <span class="warning-title">窝囊版 · 萌宠乐园</span>
+                    </div>
+                    <p class="warning-text">
+                        无惊吓、无血腥，被抓也只是被小猫蹭一脸。
+                    </p>
+                </div>
+
+                <div class="info-cards">
+                    <div class="info-card">
+                        <div class="card-title">操 作</div>
+                        <ul class="card-list">
+                            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>移动</span></li>
+                            <li><kbd>鼠标</kbd><span>视角 · <kbd>Shift</kbd>冲刺</span></li>
+                            <li><kbd>空格</kbd><span>地图 · <kbd>Z</kbd>缩放 · <kbd>ESC</kbd>暂停</span></li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <div class="card-title">目 标</div>
+                        <ul class="card-list">
+                            <li><span class="dot dot-shard"></span><span>收集全部 <em class="c-shard">灵魂碎片</em></span></li>
+                            <li><span class="dot dot-exit"></span><span>跑回 <em class="c-exit">电梯</em> 逃脱</span></li>
+                            <li><span class="dot dot-enemy"></span><span>躲避血猴 · <em class="c-enemy">3 命</em></span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="menu-content menu-board" aria-label="速通榜">
+                <div class="board-title">速通榜</div>
+                <div class="board-sub">用时越短越好 · NodeLoc 账号保存</div>
+                <div id="speedrun-board" class="board-table">
+                    <div class="board-empty">加载中…</div>
+                </div>
+                <p class="board-hint">根据 NodeLoc 账号存储</p>
+            </aside>
+        </div>
+    </div>
+
+    <!-- 主页菜单（设置） -->
+    <div id="home-menu" class="overlay hidden" aria-hidden="true">
+        <div class="menu-content">
+            <h1 class="title">菜单</h1>
+            <div class="settings-panel">
+                <div class="settings-row">
+                    <label for="fov-slider-menu">视野 FOV</label>
+                    <input type="range" id="fov-slider-menu" class="setting-slider" min="60" max="100" step="1" value="75">
+                    <span class="setting-value" data-for="fov-slider-menu">75°</span>
+                </div>
+                <div class="settings-row">
+                    <label for="brightness-slider-menu">亮度</label>
+                    <input type="range" id="brightness-slider-menu" class="setting-slider" min="50" max="150" step="5" value="100">
+                    <span class="setting-value" data-for="brightness-slider-menu">100%</span>
+                </div>
+                <div class="settings-row">
+                    <label for="quality-slider-menu">画质</label>
+                    <input type="range" id="quality-slider-menu" class="setting-slider" min="50" max="100" step="5" value="100">
+                    <span class="setting-value" data-for="quality-slider-menu">100%</span>
+                </div>
+            </div>
+            <button type="button" id="home-menu-back-btn" class="btn">返回主页</button>
+        </div>
+    </div>
+
+    <!-- 开场：光敏性癫痫警告（开始游戏后、电梯过场前） -->
+    <div id="seizure-warning" class="overlay hidden">
+        <div class="menu-content seizure-panel">
+            <div class="warning-box warning-seizure">
+                <div class="warning-header">
+                    <span class="warning-icon">⚠</span>
+                    <span class="warning-title">PHOTOSENSITIVE SEIZURE WARNING · 光敏性癫痫警告</span>
+                </div>
+                <p class="warning-text">
+                    本游戏包含闪烁画面、强烈色彩变化与快速镜头移动，可能诱发光敏性癫痫发作。
+                    若您有癫痫病史或对闪光敏感，请在游玩前咨询医生。
+                    如游玩中出现头晕、视觉模糊、眼或肌肉抽搐、意识丧失等症状，请立即停止游戏并就医。
+                </p>
+            </div>
+            <button id="seizure-continue-btn" class="btn btn-primary">
+                <span class="btn-text">我已了解，继续</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 暂停菜单 -->
+    <div id="pause-menu" class="overlay hidden">
+        <div class="menu-content">
+            <h1 class="title">已暂停</h1>
+            <div class="settings-panel">
+                <div class="settings-row">
+                    <label for="fov-slider-pause">视野 FOV</label>
+                    <input type="range" id="fov-slider-pause" class="setting-slider" min="60" max="100" step="1" value="75">
+                    <span class="setting-value" data-for="fov-slider-pause">75°</span>
+                </div>
+                <div class="settings-row">
+                    <label for="brightness-slider-pause">亮度</label>
+                    <input type="range" id="brightness-slider-pause" class="setting-slider" min="50" max="150" step="5" value="100">
+                    <span class="setting-value" data-for="brightness-slider-pause">100%</span>
+                </div>
+                <div class="settings-row">
+                    <label for="quality-slider-pause">画质</label>
+                    <input type="range" id="quality-slider-pause" class="setting-slider" min="50" max="100" step="5" value="100">
+                    <span class="setting-value" data-for="quality-slider-pause">100%</span>
+                </div>
+            </div>
+            <button id="resume-btn" class="btn">继续游戏</button>
+            <button id="restart-btn-pause" class="btn">重新开始</button>
+            <button type="button" id="home-btn-pause" class="btn">返回主页</button>
+        </div>
+    </div>
+
+    <!-- 胜利界面 -->
+    <div id="win-screen" class="overlay hidden">
+        <div class="menu-content win">
+            <h1 class="title">逃脱成功</h1>
+            <p id="win-time"></p>
+            <p id="win-submit-msg" class="win-submit-msg"></p>
+            <p style="color:#bb44ff; margin-top:12px;">你乘电梯离开了……暂时</p>
+            <div class="win-actions">
+                <button id="next-level-btn" class="btn btn-next">下一关</button>
+                <button id="restart-btn-win" class="btn">再来一局</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 下一关催更弹窗 -->
+    <div id="next-level-modal" class="overlay modal-overlay hidden">
+        <div class="menu-content next-level-dialog">
+            <h1 class="title">第二关？</h1>
+            <p class="next-level-copy">
+                作者还在电梯里赶稿。<br>
+                请催他快点做第二关！
+            </p>
+            <p class="next-level-copy">
+                作者还在电梯里赶稿。<br>
+                请催他快点做第二关！
+            </p>
+            <p class="next-level-hint">（此关尚未解锁，敬请期待）</p>
+            <a class="btn btn-link" href="http://zard.loc.cc/" target="_blank" rel="noopener noreferrer">作者项目合集</a>
+            <button id="next-level-ok-btn" class="btn">好的，催催</button>
+        </div>
+    </div>
+
+    <!-- 被抓动画 / 等待重生 -->
+    <div id="caught-screen" class="overlay caught-overlay hidden" aria-hidden="true">
+        <div class="caught-fx" aria-hidden="true">
+            <div class="caught-flash"></div>
+            <div class="caught-slash slash-a"></div>
+            <div class="caught-slash slash-b"></div>
+            <div class="caught-slash slash-c"></div>
+            <div class="caught-vignette"></div>
+            <div class="caught-noise"></div>
+        </div>
+        <div class="caught-content">
+            <div class="caught-title" id="caught-title">被抓住了</div>
+            <p id="caught-lives" class="caught-lives"></p>
+            <button id="respawn-btn" class="btn btn-primary caught-respawn-btn" disabled>
+                <span class="btn-text" id="respawn-btn-text">…</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 失败界面 -->
+    <div id="lose-screen" class="overlay hidden">
+        <div class="menu-content lose">
+            <h1 class="title">被抓住了</h1>
+            <p id="lose-text">Murder Monkey 撕碎了你...</p>
+            <button id="restart-btn-lose" class="btn">再来一局</button>
+        </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div id="loading" class="overlay">
+        <div class="menu-content">
+            <h1 class="title">加载中...</h1>
+        </div>
+    </div>
+
+    <!-- 本地 Three.js（不依赖外网 CDN） -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./vendor/three/three.module.js",
+            "three/addons/": "./vendor/three/addons/"
+        }
+    }
+    </script>
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "soul-shards-monkey-business",
+  "version": "1.0.0",
+  "private": true,
+  "description": "灵魂碎片 - Monkey Business (static Three.js game)",
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "dev": "node scripts/serve.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
